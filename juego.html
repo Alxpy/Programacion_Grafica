@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Juego WebGL 2.0 - Atrapa el cuadrado</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 15px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      margin-top: 20px;
+    }
+    
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      background: linear-gradient(to right, #ff8a00, #da1b60);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .game-info {
+      display: flex;
+      justify-content: space-around;
+      margin: 20px 0;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 15px;
+      border-radius: 10px;
+    }
+    
+    .score-container {
+      font-size: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .score-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #4CAF50;
+      text-shadow: 0 0 10px rgba(76, 175, 80, 0.7);
+    }
+    
+    .high-score {
+      font-size: 1.2rem;
+      color: #FFC107;
+    }
+    
+    .timer {
+      font-size: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .time-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #2196F3;
+      text-shadow: 0 0 10px rgba(33, 150, 243, 0.7);
+    }
+    
+    .level {
+      font-size: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .level-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #9C27B0;
+      text-shadow: 0 0 10px rgba(156, 39, 176, 0.7);
+    }
+    
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background: #111;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    }
+    
+    .instructions {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      text-align: left;
+      max-width: 600px;
+    }
+    
+    .instructions h2 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #FFC107;
+    }
+    
+    .instructions ul {
+      padding-left: 20px;
+    }
+    
+    .instructions li {
+      margin-bottom: 8px;
+    }
+    
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    
+    button {
+      background: linear-gradient(to right, #2196F3, #21CBF3);
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 50px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    }
+    
+    button:active {
+      transform: translateY(1px);
+    }
+    
+    .game-over {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+    }
+    
+    .game-over h2 {
+      font-size: 3rem;
+      color: #FF5252;
+      margin-bottom: 20px;
+    }
+    
+    .game-over p {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+    
+    .particles {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+    }
+  </style>
+</head>
+<body>
+  <div class="particles" id="particles"></div>
+  
+  <h1>🎮 Atrapa el cuadrado</h1>
+  
+  <div class="container">
+    <div class="game-info">
+      <div class="score-container">
+        <div>Puntos</div>
+        <div class="score-value" id="score">0</div>
+        <div class="high-score">Mejor: <span id="high-score">0</span></div>
+      </div>
+      
+      <div class="timer">
+        <div>Tiempo</div>
+        <div class="time-value" id="timer">60</div>
+        <div>segundos</div>
+      </div>
+      
+      <div class="level">
+        <div>Nivel</div>
+        <div class="level-value" id="level">1</div>
+        <div>Objetivo: <span id="target">10</span></div>
+      </div>
+    </div>
+    
+    <canvas id="glCanvas" width="600" height="400"></canvas>
+    
+    <div class="controls">
+      <button id="start-btn">Iniciar Juego</button>
+      <button id="pause-btn">Pausa</button>
+      <button id="reset-btn">Reiniciar</button>
+    </div>
+    
+    <div class="instructions">
+      <h2>Instrucciones</h2>
+      <ul>
+        <li>Mueve el cursor para controlar el círculo verde</li>
+        <li>Atrapa el cuadrado rojo para ganar puntos</li>
+        <li>Cada nivel requiere más puntos para avanzar</li>
+        <li>El juego termina cuando se acaba el tiempo</li>
+        <li>¡Consigue la mayor cantidad de puntos posible!</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="game-over" id="game-over">
+    <h2>¡Juego Terminado!</h2>
+    <p>Puntuación final: <span id="final-score">0</span></p>
+    <p>Nivel alcanzado: <span id="final-level">1</span></p>
+    <button id="restart-btn">Jugar de Nuevo</button>
+  </div>
+
+  <script>
+    // Variables del juego
+    let score = 0;
+    let highScore = localStorage.getItem('highScore') || 0;
+    let level = 1;
+    let targetScore = 10;
+    let timeLeft = 60;
+    let gameActive = false;
+    let gameTimer;
+    
+    // Elementos del DOM
+    const scoreElement = document.getElementById('score');
+    const highScoreElement = document.getElementById('high-score');
+    const timerElement = document.getElementById('timer');
+    const levelElement = document.getElementById('level');
+    const targetElement = document.getElementById('target');
+    const startButton = document.getElementById('start-btn');
+    const pauseButton = document.getElementById('pause-btn');
+    const resetButton = document.getElementById('reset-btn');
+    const restartButton = document.getElementById('restart-btn');
+    const gameOverScreen = document.getElementById('game-over');
+    const finalScoreElement = document.getElementById('final-score');
+    const finalLevelElement = document.getElementById('final-level');
+    
+    // Configurar puntuación máxima
+    highScoreElement.textContent = highScore;
+    
+    // Inicializar WebGL
+    const canvas = document.getElementById("glCanvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) {
+      alert("Tu navegador no soporta WebGL 2.0");
+    }
+
+    // Shaders
+    const vsSource = `#version 300 es
+    in vec2 aPosition;
+    uniform vec2 uTranslation;
+    void main() {
+      gl_Position = vec4(aPosition + uTranslation, 0.0, 1.0);
+    }`;
+
+    const fsSource = `#version 300 es
+    precision mediump float;
+    uniform vec3 uColor;
+    out vec4 fragColor;
+    void main() {
+      fragColor = vec4(uColor, 1.0);
+    }`;
+
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+      const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program));
+        return null;
+      }
+      return program;
+    }
+
+    const program = createProgram(gl, vsSource, fsSource);
+    gl.useProgram(program);
+
+    const posAttrib = gl.getAttribLocation(program, "aPosition");
+    const uTranslation = gl.getUniformLocation(program, "uTranslation");
+    const uColor = gl.getUniformLocation(program, "uColor");
+
+    // Función para crear un círculo (jugador)
+    function createCircleVertices(n = 30, r = 0.05) {
+      let verts = [];
+      for (let i = 0; i < n; i++) {
+        let angle1 = (i / n) * 2 * Math.PI;
+        let angle2 = ((i + 1) / n) * 2 * Math.PI;
+        verts.push(0, 0);
+        verts.push(r * Math.cos(angle1), r * Math.sin(angle1));
+        verts.push(r * Math.cos(angle2), r * Math.sin(angle2));
+      }
+      return new Float32Array(verts);
+    }
+
+    // Cuadrado (enemigo a atrapar)
+    const squareVerts = new Float32Array([
+      -0.05, -0.05,
+       0.05, -0.05,
+       0.05,  0.05,
+      -0.05, -0.05,
+       0.05,  0.05,
+      -0.05,  0.05
+    ]);
+
+    // Buffers
+    function createBuffer(data) {
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      return buffer;
+    }
+
+    const circleBuffer = createBuffer(createCircleVertices());
+    const squareBuffer = createBuffer(squareVerts);
+
+    // Posiciones iniciales
+    let player = {x: 0, y: 0};
+    let target = {x: Math.random()*1.6-0.8, y: Math.random()*1.6-0.8};
+    let targetSpeed = 0.01;
+
+    // Eventos de mouse
+    canvas.addEventListener("mousemove", e => {
+      if (!gameActive) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / canvas.width) * 2 - 1;
+      const y = -(((e.clientY - rect.top) / canvas.height) * 2 - 1);
+      player.x = x;
+      player.y = y;
+    });
+
+    function drawObject(buffer, count, translation, color) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(posAttrib);
+      gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+      gl.uniform2fv(uTranslation, [translation.x, translation.y]);
+      gl.uniform3fv(uColor, color);
+      gl.drawArrays(gl.TRIANGLES, 0, count);
+    }
+
+    function distance(a, b) {
+      return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
+    }
+
+    // Función para mover el objetivo
+    function moveTarget() {
+      // Movimiento aleatorio con tendencia a alejarse del jugador
+      const dx = target.x - player.x;
+      const dy = target.y - player.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      
+      // Si está muy cerca, alejarse más rápido
+      if (dist < 0.3) {
+        target.x += (dx/dist) * targetSpeed * 2;
+        target.y += (dy/dist) * targetSpeed * 2;
+      } else {
+        // Movimiento aleatorio normal
+        target.x += (Math.random() - 0.5) * targetSpeed;
+        target.y += (Math.random() - 0.5) * targetSpeed;
+      }
+      
+      // Mantener dentro de los límites
+      target.x = Math.max(-0.9, Math.min(0.9, target.x));
+      target.y = Math.max(-0.9, Math.min(0.9, target.y));
+    }
+
+    // Sistema de partículas para efectos visuales
+    function createParticles() {
+      const particlesContainer = document.getElementById('particles');
+      particlesContainer.innerHTML = '';
+      
+      for (let i = 0; i < 50; i++) {
+        const particle = document.createElement('div');
+        particle.style.position = 'absolute';
+        particle.style.width = Math.random() * 5 + 2 + 'px';
+        particle.style.height = particle.style.width;
+        particle.style.backgroundColor = `hsl(${Math.random() * 360}, 70%, 60%)`;
+        particle.style.borderRadius = '50%';
+        particle.style.left = Math.random() * 100 + 'vw';
+        particle.style.top = Math.random() * 100 + 'vh';
+        particle.style.opacity = Math.random() * 0.5 + 0.2;
+        particle.style.animation = `float ${Math.random() * 20 + 10}s linear infinite`;
+        
+        // Crear animación CSS dinámicamente
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes float {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(${Math.random() * 100 - 50}vw, ${Math.random() * 100 - 50}vh) rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
+        
+        particlesContainer.appendChild(particle);
+      }
+    }
+
+    function render() {
+      gl.clearColor(0.1, 0.1, 0.1, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // Dibujar jugador (círculo)
+      drawObject(circleBuffer, 30*3, player, [0.0, 1.0, 0.0]);
+
+      // Mover y dibujar cuadrado
+      if (gameActive) {
+        moveTarget();
+      }
+      drawObject(squareBuffer, 6, target, [1.0, 0.0, 0.0]);
+
+      // Colisión
+      if (distance(player, target) < 0.1 && gameActive) {
+        score++;
+        scoreElement.textContent = score;
+        
+        // Efecto visual al capturar
+        canvas.style.boxShadow = "0 0 20px rgba(0, 255, 0, 0.7)";
+        setTimeout(() => {
+          canvas.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.5)";
+        }, 200);
+        
+        // Reposicionar objetivo
+        target.x = Math.random()*1.6-0.8;
+        target.y = Math.random()*1.6-0.8;
+        
+        // Aumentar velocidad del objetivo cada 5 puntos
+        if (score % 5 === 0) {
+          targetSpeed += 0.005;
+        }
+        
+        // Comprobar si se ha alcanzado el objetivo del nivel
+        if (score >= targetScore) {
+          levelUp();
+        }
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    // Subir de nivel
+    function levelUp() {
+      level++;
+      levelElement.textContent = level;
+      targetScore += level * 5;
+      targetElement.textContent = targetScore;
+      
+      // Aumentar tiempo según el nivel
+      timeLeft += 10;
+      timerElement.textContent = timeLeft;
+      
+      // Efecto visual de nivel
+      document.querySelector('.level-value').style.color = '#FF9800';
+      setTimeout(() => {
+        document.querySelector('.level-value').style.color = '#9C27B0';
+      }, 1000);
+    }
+
+    // Temporizador del juego
+    function startTimer() {
+      gameTimer = setInterval(() => {
+        if (gameActive) {
+          timeLeft--;
+          timerElement.textContent = timeLeft;
+          
+          // Cambiar color cuando queda poco tiempo
+          if (timeLeft <= 10) {
+            timerElement.style.color = '#FF5252';
+          }
+          
+          if (timeLeft <= 0) {
+            endGame();
+          }
+        }
+      }, 1000);
+    }
+
+    // Iniciar juego
+    function startGame() {
+      if (gameActive) return;
+      
+      gameActive = true;
+      startButton.disabled = true;
+      startTimer();
+    }
+
+    // Pausar juego
+    function pauseGame() {
+      gameActive = !gameActive;
+      pauseButton.textContent = gameActive ? 'Pausa' : 'Reanudar';
+    }
+
+    // Reiniciar juego
+    function resetGame() {
+      gameActive = false;
+      clearInterval(gameTimer);
+      
+      score = 0;
+      level = 1;
+      targetScore = 10;
+      timeLeft = 60;
+      targetSpeed = 0.01;
+      
+      scoreElement.textContent = score;
+      levelElement.textContent = level;
+      targetElement.textContent = targetScore;
+      timerElement.textContent = timeLeft;
+      timerElement.style.color = '#2196F3';
+      
+      startButton.disabled = false;
+      pauseButton.textContent = 'Pausa';
+      gameOverScreen.style.display = 'none';
+      
+      // Reposicionar objetivo
+      target.x = Math.random()*1.6-0.8;
+      target.y = Math.random()*1.6-0.8;
+    }
+
+    // Terminar juego
+    function endGame() {
+      gameActive = false;
+      clearInterval(gameTimer);
+      
+      // Actualizar puntuación máxima
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('highScore', highScore);
+        highScoreElement.textContent = highScore;
+      }
+      
+      // Mostrar pantalla de fin de juego
+      finalScoreElement.textContent = score;
+      finalLevelElement.textContent = level;
+      gameOverScreen.style.display = 'block';
+    }
+
+    // Event listeners para los botones
+    startButton.addEventListener('click', startGame);
+    pauseButton.addEventListener('click', pauseGame);
+    resetButton.addEventListener('click', resetGame);
+    restartButton.addEventListener('click', resetGame);
+
+    // Inicializar partículas y renderizar
+    createParticles();
+    render();
+  </script>
+</body>
+</html>
