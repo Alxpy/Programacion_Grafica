@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Evita obstáculos (WebGL 2.0)</title>
+    <style>
+      body {
+        background: #000;
+        color: #fff;
+        font-family: sans-serif;
+        text-align: center;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        border: 1px solid #333;
+        margin: 10px auto;
+      }
+      #ui {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        font-family: monospace;
+        font-size: 16px;
+        text-align: left;
+        pointer-events: none;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
+        border-radius: 5px;
+      }
+      #gameOver {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        padding: 30px;
+        border-radius: 10px;
+        text-align: center;
+        border: 2px solid #ff0000;
+        display: none;
+      }
+      button {
+        background: #0066cc;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-top: 15px;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #0088ff;
+      }
+      h2 {
+        margin: 0 0 15px 0;
+        color: #ff4444;
+      }
+      .stats {
+        margin: 10px 0;
+        font-size: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Evita obstáculos</h2>
+    <canvas id="webglcanvas" width="500" height="500"></canvas>
+    
+    <!-- Interfaz de usuario en HTML -->
+    <div id="ui">
+      <div>Tiempo: <span id="tiempo">0</span>s</div>
+      <div>Puntuación: <span id="puntuacion">0</span></div>
+      <div>Obstáculos evitados: <span id="obstaculosEvitados">0</span></div>
+    </div>
+    
+    <div id="gameOver">
+      <h2>¡GAME OVER!</h2>
+      <div class="stats">Tiempo sobrevivido: <span id="finalTiempo">0</span>s</div>
+      <div class="stats">Puntuación final: <span id="finalPuntuacion">0</span></div>
+      <div class="stats">Obstáculos evitados: <span id="finalObstaculos">0</span></div>
+      <p>Presiona R o haz clic en el botón para reiniciar</p>
+      <button id="reiniciarBtn">Jugar de nuevo</button>
+    </div>
+
+    <!-- Shaders para WebGL -->
+    <script id="vs" type="vertex">
+      #version 300 es
+      uniform vec2 uDesplaza;
+      uniform mat4 uMatrizProyeccion;
+      uniform vec2 uEscala;
+      layout(location=0) in vec2 aVertices;
+      void main() {
+        vec2 pos = aVertices * uEscala + uDesplaza;
+        gl_Position = uMatrizProyeccion * vec4(pos,0.0,1.0);
+      }
+    </script>
+
+    <script id="fs" type="fragment">
+      #version 300 es
+      precision mediump float;
+      uniform vec4 uColor;
+      out vec4 color;
+      void main(){ color=uColor; }
+    </script>
+
+    <script>
+      // FUNCIONES MATEMÁTICAS Y DE PROYECCIÓN
+      /**
+       * Crea una matriz de proyección ortográfica
+       */
+      function ortho(r, izq, der, abj, arr, cerca, lejos) {
+        r[0] = 2 / (der - izq);
+        r[4] = 0;
+        r[8] = 0;
+        r[12] = -(der + izq) / (der - izq);
+        r[1] = 0;
+        r[5] = 2 / (arr - abj);
+        r[9] = 0;
+        r[13] = -(arr + abj) / (arr - abj);
+        r[2] = 0;
+        r[6] = 0;
+        r[10] = -2 / (lejos - cerca);
+        r[14] = -(lejos + cerca) / (lejos - cerca);
+        r[3] = 0;
+        r[7] = 0;
+        r[11] = 0;
+        r[15] = 1;
+      }
+
+      /**
+       * Crea los vértices para un cuadrado centrado en (0,0) de lado 1
+       */
+      function crearVerticesCuadrado() {
+        return new Float32Array([
+          -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5,
+        ]);
+      }
+
+      /**
+       * Crea los vértices para un triángulo equilátero centrado en (0,0)
+       */
+      function crearVerticesTriangulo() {
+        return new Float32Array([
+          0.0, 0.5,   // Vértice superior
+          -0.5, -0.5, // Vértice inferior izquierdo
+          0.5, -0.5   // Vértice inferior derecho
+        ]);
+      }
+
+      /**
+       * Crea los vértices para un círculo aproximado por triángulos
+       */
+      function crearVerticesCirculo(segmentos = 20) {
+        const vertices = [];
+        const anguloPaso = (2 * Math.PI) / segmentos;
+        
+        // El centro del círculo
+        vertices.push(0, 0);
+        
+        // Crear vértices alrededor del círculo
+        for (let i = 0; i <= segmentos; i++) {
+          const angulo = i * anguloPaso;
+          vertices.push(Math.cos(angulo) * 0.5, Math.sin(angulo) * 0.5);
+        }
+        
+        // Crear triángulos desde el centro hacia los vértices
+        const triangulos = [];
+        for (let i = 1; i <= segmentos; i++) {
+          triangulos.push(0, 0); // Centro
+          triangulos.push(vertices[i*2], vertices[i*2+1]); // Vértice actual
+          triangulos.push(vertices[(i+1)*2], vertices[(i+1)*2+1]); // Siguiente vértice
+        }
+        
+        return new Float32Array(triangulos);
+      }
+
+      // =============================================
+      // LÓGICA DEL JUEGO
+      // =============================================
+      
+      /**
+       * Comprueba si dos rectángulos están colisionando
+       */
+      function checkCollision(a, b) {
+        return (
+          a.x < b.x + b.w &&
+          a.x + a.w > b.x &&
+          a.y < b.y + b.h &&
+          a.y + a.h > b.y
+        );
+      }
+
+      // Variables globales del juego
+      let canvas, gl;
+      let uColor, uDesplaza, uEscala, uMatrizProyeccion;
+      let cuadradoVAO, trianguloVAO, circuloVAO;
+      let MatrizProyeccion = new Float32Array(16);
+      let jugador = { x: -4, y: 0, w: 0.6, h: 0.6, speed: 0.2 };
+      let teclas = {}, obstaculos = [], tiempo = 0, gameOver = false;
+      let ultimoSpawn = 0, spawnDelay = 80;
+      let puntuacion = 0, flashFrames = 0, obstaculosEvitados = 0;
+      
+      // MANEJO DE ENTRADA
+      
+      /**
+       * Maneja el estado de las teclas presionadas
+       */
+      function manejarTeclas(e, estado) {
+        teclas[e.key] = estado;
+      }
+      
+      // Configurar event listeners para el teclado
+      document.addEventListener("keydown", (e) => {
+        manejarTeclas(e, true);
+        // Permitir reiniciar con R cuando el juego ha terminado
+        if (gameOver && e.key.toLowerCase() === "r") {
+          reiniciar();
+        }
+      });
+      document.addEventListener("keyup", (e) => manejarTeclas(e, false));
+
+      // =============================================
+      // ACTUALIZACIÓN DEL JUEGO
+      
+      /**
+       * Mueve al jugador según las teclas presionadas
+       */
+      function moverJugador() {
+        if (teclas["ArrowUp"] || teclas["w"]) jugador.y += jugador.speed;
+        if (teclas["ArrowDown"] || teclas["s"]) jugador.y -= jugador.speed;
+        if (teclas["ArrowLeft"] || teclas["a"]) jugador.x -= jugador.speed;
+        if (teclas["ArrowRight"] || teclas["d"]) jugador.x += jugador.speed;
+        
+        // Mantener al jugador dentro de los límites del mundo
+        jugador.x = Math.max(-4.7, Math.min(4.7 - jugador.w, jugador.x));
+        jugador.y = Math.max(-4.7, Math.min(4.7 - jugador.h, jugador.y));
+      }
+
+      /**
+       * Actualiza el estado del juego en cada frame
+       */
+      function actualizar() {
+        if (gameOver) return;
+        
+        moverJugador();
+
+        // Generar nuevos obstáculos
+        if (++ultimoSpawn > spawnDelay) {
+          ultimoSpawn = 0;
+          // Aumentar dificultad reduciendo el tiempo entre obstáculos
+          spawnDelay = Math.max(30, 80 - Math.floor(tiempo / 600));
+          
+          // Crear un nuevo obstáculo con tipo aleatorio
+          const tipo = Math.floor(Math.random() * 3); // 0: cuadrado, 1: triángulo, 2: círculo
+          const puedeCrecer = Math.random() < 0.3; // 30% de probabilidad de que crezca
+          
+          obstaculos.push({
+            x: 5,
+            y: Math.random() * 8 - 4,
+            w: 0.5 + Math.random() * 0.5,
+            h: 0.5 + Math.random() * 0.5,
+            vel: 0.05 + Math.random() * 0.05,
+            tipo: tipo, // 0: cuadrado, 1: triángulo, 2: círculo
+            color: [
+              Math.random() * 0.5 + 0.5, // R: 0.5-1.0
+              Math.random() * 0.3,       // G: 0.0-0.3
+              Math.random() * 0.3        // B: 0.0-0.3
+            ],
+            crece: puedeCrecer,
+            crecimiento: puedeCrecer ? 0.1 + Math.random() * 0.2 : 0, // Cuánto puede crecer
+            tiempoCrecimiento: 0,
+            creciendo: false
+          });
+        }
+
+        // Mover obstáculos y comprobar colisiones
+        for (let i = obstaculos.length - 1; i >= 0; i--) {
+          let o = obstaculos[i];
+          
+          // Mover obstáculo
+          o.x -= o.vel;
+          
+          // Hacer crecer algunos obstáculos
+          if (o.crece) {
+            o.tiempoCrecimiento++;
+            // Cambiar entre crecer y no crecer cada 60 frames
+            if (o.tiempoCrecimiento % 60 === 0) {
+              o.creciendo = !o.creciendo;
+            }
+            
+            // Aplicar crecimiento si está en modo creciendo
+            if (o.creciendo) {
+              o.w += o.crecimiento * 0.02;
+              o.h += o.crecimiento * 0.02;
+            }
+          }
+          
+          // Eliminar obstáculos que salgan de la pantalla
+          if (o.x < -6) {
+            obstaculos.splice(i, 1);
+            puntuacion += 10; // Sumar puntos por evitar obstáculos
+            obstaculosEvitados++;
+            // Actualizar la interfaz
+            actualizarUI();
+          }
+          
+          // Comprobar colisión con el jugador
+          if (checkCollision(jugador, o)) {
+            gameOver = true;
+            flashFrames = 10; // Efecto visual de colisión
+            mostrarGameOver();
+          }
+        }
+
+        tiempo++; // Incrementar contador de tiempo
+        actualizarUI();
+      }
+
+      // INTERFAZ DE USUARIO (HTML)
+      
+      /**
+       * Actualiza los elementos de la interfaz de usuario
+       */
+      function actualizarUI() {
+        document.getElementById("tiempo").textContent = Math.floor(tiempo / 60);
+        document.getElementById("puntuacion").textContent = puntuacion;
+        document.getElementById("obstaculosEvitados").textContent = obstaculosEvitados;
+      }
+
+      /**
+       * Muestra la pantalla de Game Over
+       */
+      function mostrarGameOver() {
+        document.getElementById("finalTiempo").textContent = Math.floor(tiempo / 60);
+        document.getElementById("finalPuntuacion").textContent = puntuacion;
+        document.getElementById("finalObstaculos").textContent = obstaculosEvitados;
+        document.getElementById("gameOver").style.display = "block";
+      }
+
+      // =============================================
+      // RENDERIZADO WEBGL
+      
+      /**
+       * Función principal de renderizado
+       */
+      function dibuja() {
+        // Limpiar pantalla
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Efecto de flash en colisión (fondo rojo temporal)
+        if (flashFrames > 0) {
+          gl.clearColor(1.0, 0.3, 0.3, 1.0);
+          flashFrames--;
+        } else {
+          gl.clearColor(0, 0, 0, 1);
+        }
+        
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Actualizar estado del juego
+        actualizar();
+
+        // Dibujar jugador (siempre un cuadrado)
+        gl.bindVertexArray(cuadradoVAO);
+        gl.uniform2f(
+          uDesplaza,
+          jugador.x + jugador.w / 2,
+          jugador.y + jugador.h / 2
+        );
+        gl.uniform2f(uEscala, jugador.w, jugador.h);
+        gl.uniform4f(uColor, 0.0, 0.6, 1.0, 1.0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // Dibujar obstáculos
+        obstaculos.forEach((o) => {
+          // Seleccionar VAO según el tipo de obstáculo
+          switch(o.tipo) {
+            case 0: // Cuadrado
+              gl.bindVertexArray(cuadradoVAO);
+              break;
+            case 1: // Triángulo
+              gl.bindVertexArray(trianguloVAO);
+              break;
+            case 2: // Círculo
+              gl.bindVertexArray(circuloVAO);
+              break;
+          }
+          
+          // Configurar posición, escala y color
+          gl.uniform2f(uDesplaza, o.x + o.w / 2, o.y + o.h / 2);
+          gl.uniform2f(uEscala, o.w, o.h);
+          gl.uniform4f(uColor, o.color[0], o.color[1], o.color[2], 1.0);
+          
+          // Dibujar según el tipo
+          if (o.tipo === 2) {
+            // El círculo tiene más vértices (20 segmentos * 3 vértices por triángulo)
+            gl.drawArrays(gl.TRIANGLES, 0, 60);
+          } else if (o.tipo === 1) {
+            // El triángulo tiene 3 vértices
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          } else {
+            // El cuadrado tiene 6 vértices (2 triángulos)
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+          }
+        });
+
+        gl.bindVertexArray(null);
+
+        // Solicitar siguiente frame
+        requestAnimationFrame(dibuja);
+      }
+
+      // INICIALIZACIÓN Y CONTROL DEL JUEGO
+      
+      /**
+       * Reinicia el juego a su estado inicial
+       */
+      function reiniciar() {
+        jugador.x = -4;
+        jugador.y = 0;
+        obstaculos = [];
+        tiempo = 0;
+        puntuacion = 0;
+        obstaculosEvitados = 0;
+        gameOver = false;
+        spawnDelay = 80;
+        document.getElementById("gameOver").style.display = "none";
+        actualizarUI();
+      }
+
+      /**
+       * Función principal de inicialización
+       */
+      function main() {
+        // Obtener contexto WebGL
+        canvas = document.getElementById("webglcanvas");
+        gl = canvas.getContext("webgl2");
+        if (!gl) {
+          alert("Tu navegador no soporta WebGL 2.0");
+          return;
+        }
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        // Inicializar figuras geométricas
+
+        
+        // Compilar shaders principales
+        let vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, document.getElementById("vs").text.trim());
+        gl.compileShader(vs);
+
+        let fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, document.getElementById("fs").text.trim());
+        gl.compileShader(fs);
+
+        // Crear y enlazar programa principal
+        let prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+
+        // =============================================
+        // GEOMETRÍA DE FIGURAS
+        // =============================================
+        
+        // Crear VAO para cuadrado (jugador y algunos obstáculos)
+        let verticesCuadrado = crearVerticesCuadrado();
+        cuadradoVAO = gl.createVertexArray();
+        gl.bindVertexArray(cuadradoVAO);
+        let bufCuadrado = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bufCuadrado);
+        gl.bufferData(gl.ARRAY_BUFFER, verticesCuadrado, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(0);
+        
+        // Crear VAO para triángulo (algunos obstáculos)
+        let verticesTriangulo = crearVerticesTriangulo();
+        trianguloVAO = gl.createVertexArray();
+        gl.bindVertexArray(trianguloVAO);
+        let bufTriangulo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bufTriangulo);
+        gl.bufferData(gl.ARRAY_BUFFER, verticesTriangulo, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(0);
+        
+        // Crear VAO para círculo (algunos obstáculos)
+        let verticesCirculo = crearVerticesCirculo(20);
+        circuloVAO = gl.createVertexArray();
+        gl.bindVertexArray(circuloVAO);
+        let bufCirculo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bufCirculo);
+        gl.bufferData(gl.ARRAY_BUFFER, verticesCirculo, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(0);
+        
+        gl.bindVertexArray(null);
+
+        // =============================================
+        // UNIFORMS Y CONFIGURACIÓN
+        // =============================================
+        
+        // Obtener ubicaciones de uniforms del programa principal
+        uColor = gl.getUniformLocation(prog, "uColor");
+        uDesplaza = gl.getUniformLocation(prog, "uDesplaza");
+        uEscala = gl.getUniformLocation(prog, "uEscala");
+        uMatrizProyeccion = gl.getUniformLocation(prog, "uMatrizProyeccion");
+
+        // Configurar matriz de proyección y color de fondo
+        ortho(MatrizProyeccion, -5, 5, -5, 5, -1, 1);
+        gl.uniformMatrix4fv(uMatrizProyeccion, false, MatrizProyeccion);
+        gl.clearColor(0, 0, 0, 1);
+
+        // Configurar botón de reinicio
+        document.getElementById("reiniciarBtn").addEventListener("click", reiniciar);
+
+        // Inicializar interfaz
+        actualizarUI();
+
+        // Iniciar bucle de juego
+        requestAnimationFrame(dibuja);
+      }
+      
+      // Iniciar el juego cuando la página cargue
+      window.onload = main;
+    </script>
+  </body>
+</html>
